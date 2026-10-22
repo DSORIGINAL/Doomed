@@ -98,4 +98,6 @@ Its objective is more focused:
 ---
 Doomed is a human-directed, AI-implemented Gemini workbench developed through iterative multi-model code generation, independent auditing, and defect-driven refinement.
 
+Doomed is not a finished product it is still under development and further focused towards improved reliability,quality and API analytics while feature set is complete and everything advertised works as intended apart from UI bugs on touchscreens like smartphones or tablets. it currently works best on desktop in terms of just UI while retains functionality on all devices while further updates will improve all this aspects.
+
 *Doomed is an independent client built around the Google Gemini API and is not an official Google product.*
