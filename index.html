@@ -2,8 +2,8 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Doomed</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content">
+<title>Gemini</title>
 <style>
 :root {
   --bg: #ffffff; --bg-glass: rgba(255, 255, 255, 0.88);
@@ -428,13 +428,174 @@ dialog input, dialog select { width: 100%; background: var(--surf); border: 1px 
 
 #drop { position: absolute; inset: 10px; border: 2px dashed var(--acc); border-radius: 24px; background: var(--acc-soft); backdrop-filter: blur(4px); display: none; place-items: center; font-size: 18px; font-weight: 500; color: var(--acc); z-index: 8; pointer-events: none; }
 #drop.on { display: grid; }
-@media (max-width: 760px) {
-  aside { position: fixed; inset: 0 auto 0 0; box-shadow: var(--shadow-md); }
+/* Tablets & Phones Overlay Drawer (<= 1024px) */
+@media (max-width: 1024px) {
+  html, body {
+    height: var(--vvh, 100dvh);
+    max-height: var(--vvh, 100dvh);
+  }
+  aside {
+    position: fixed;
+    inset: 0 auto 0 0;
+    width: min(84vw, 300px);
+    height: var(--vvh, 100dvh);
+    margin-left: 0 !important;
+    transform: translate3d(0, 0, 0);
+    transition: transform .22s cubic-bezier(0.4, 0, 0.2, 1);
+    will-change: transform;
+    box-shadow: var(--shadow-md);
+    padding-left: max(12px, env(safe-area-inset-left));
+    padding-bottom: max(12px, env(safe-area-inset-bottom));
+  }
+  aside.closed {
+    margin-left: 0 !important;
+    transform: translate3d(-105%, 0, 0);
+    box-shadow: none;
+    pointer-events: none;
+  }
   aside:not(.closed) + #backdrop { display: block; }
-  header .tag { max-width: 140px; }
   #sess-stat { display: none !important; }
+  header {
+    padding-left: max(10px, env(safe-area-inset-left));
+    padding-right: max(10px, env(safe-area-inset-right));
+  }
+  header .tag { max-width: 190px; }
+  .dock {
+    padding-left: max(10px, env(safe-area-inset-left));
+    padding-right: max(10px, env(safe-area-inset-right));
+    padding-bottom: max(10px, env(safe-area-inset-bottom));
+  }
+  dialog {
+    max-height: calc(var(--vvh, 100dvh) - 20px);
+  }
+}
+
+/* Touchscreen & Coarse-Pointer Optimizations (Phones + All Tablets) */
+@media (hover: none), (pointer: coarse) {
+  html, body {
+    height: var(--vvh, 100dvh);
+    max-height: var(--vvh, 100dvh);
+  }
+  dialog {
+    max-height: calc(var(--vvh, 100dvh) - 20px);
+  }
+  button, a, summary, input, select, textarea, .item {
+    touch-action: manipulation;
+    -webkit-tap-highlight-color: transparent;
+  }
+  /* Prevent iOS / iPadOS Safari auto-zoom on input focus */
+  textarea, #search, dialog input, dialog select, #inst-in, .py-args, .py-stdin, .cb-ttl-sel {
+    font-size: 16px !important;
+  }
+  /* Reveal hover-hidden actions & drop expensive GPU blur during touch scroll */
+  .msg.user .u-acts, .item .i-acts { opacity: 1; }
+  header, #backdrop, dialog::backdrop {
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+  }
+  header { background: var(--bg); }
+  .ico:hover:not(:disabled), .item:hover, .newchat:hover, .tool-btn:hover:not(:disabled) {
+    background: transparent;
+  }
+  .item.on:hover { background: var(--acc-soft); }
+  .newchat { background: var(--surf-2); }
+  .newchat kbd { display: none; }
+  button:active:not(:disabled), .item:active {
+    transform: scale(0.96);
+  }
+  /* Expanded touch hit targets */
+  .ico { width: 42px; height: 42px; }
+  .item { height: 44px; padding: 0 8px 0 12px; }
+  .item button { width: 34px; height: 34px; }
+  .msg.user .u-acts .ico { width: 34px; height: 34px; }
+  .acts .ico { width: 36px; height: 36px; }
+  .act-pill { padding: 6px 12px; min-height: 36px; }
+  .ver-nav button { padding: 5px 10px; min-width: 32px; }
+  .lvl-pill button { padding: 5px 11px; }
+  .tool-btn { padding: 6px 12px; min-height: 34px; }
+  #prev button {
+    width: 28px; height: 28px; top: -8px; right: -8px;
+    font-size: 15px; line-height: 28px; box-shadow: var(--shadow-sm);
+  }
+  .pre .bar {
+    flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none;
+    -webkit-overflow-scrolling: touch;
+  }
+  .pre .bar::-webkit-scrollbar { display: none; }
+  .pre .bar .c-btns { flex-wrap: nowrap; flex: none; }
+  .pre .bar button { padding: 6px 11px; min-height: 34px; white-space: nowrap; }
+}
+
+/* Scroll Containment & Momentum Scrolling */
+#scroll, #list, dialog, .th-body, .py-out {
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+}
+.tw, .pre pre, .ledger-wrap {
+  overscroll-behavior-x: contain;
+  -webkit-overflow-scrolling: touch;
+}
+.tools-strip { display: contents; }
+
+/* Phones & Compact Viewports (<= 760px) */
+@media (max-width: 760px) {
+  header { gap: 4px; padding: 6px 8px; padding-top: max(6px, env(safe-area-inset-top)); }
+  header .brand, #print { display: none; }
+  header .tag { max-width: 148px; font-size: 11.5px; padding: 5px 9px; }
+  .col { padding: 0 12px; }
+  #hello { padding: 3vh 0 2vh; }
+  .chips { grid-template-columns: 1fr; gap: 8px; margin-top: 16px; }
+  .chips button {
+    min-height: 0; padding: 12px 14px;
+    flex-direction: row; align-items: center; gap: 12px;
+  }
+  .chips .c-ico { margin-top: 0; align-self: center; flex: none; }
+  .msg { margin: 16px 0; }
+  .msg.user .bub, .imgs { max-width: 92%; }
+  .msg.model { gap: 10px; }
+  .spark { width: 22px; height: 22px; }
+  .pre-frame { height: min(360px, 52dvh); resize: none; }
+  .py-bar { flex-direction: column; align-items: stretch; }
+  .py-args, .py-stdin { width: 100%; }
+
+  /* Single-row swipeable composer toolbar */
+  .dock { padding: 4px 8px max(8px, env(safe-area-inset-bottom)); }
+  .dock .foot { display: none; }
+  .box { border-radius: 20px; padding: 8px 10px 8px 12px; }
+  .row { flex-wrap: wrap; gap: 6px; }
+  #tokc {
+    flex: 0 0 100%; order: -1; padding: 0 2px 2px;
+    font-size: 11.5px; overflow-x: auto; scrollbar-width: none;
+  }
+  #tokc:empty { display: none; }
+  #tokc::-webkit-scrollbar { display: none; }
+  .tools-strip {
+    display: flex; align-items: center; gap: 6px;
+    flex: 1; min-width: 0; overflow-x: auto; scrollbar-width: none;
+    -webkit-overflow-scrolling: touch; padding: 2px 0;
+  }
+  .tools-strip::-webkit-scrollbar { display: none; }
+  .tools-strip > * { flex: none; }
+
+  /* Compact swipeable cache bar */
+  #cache-bar { padding: 6px 10px; gap: 6px; }
+  .cb-left, .cb-acts {
+    flex-wrap: nowrap; overflow-x: auto; max-width: 100%;
+    scrollbar-width: none; -webkit-overflow-scrolling: touch;
+  }
+  .cb-left::-webkit-scrollbar, .cb-acts::-webkit-scrollbar { display: none; }
+  .cb-acts { margin-left: 0; width: 100%; }
+
+  /* Mobile-proportioned dialogs */
+  dialog, #wdlg, #cacdlg, #tokdlg, #idlg {
+    width: calc(100vw - 16px);
+    padding: 18px 16px;
+    border-radius: 20px;
+  }
   .rate-grid, .wc-cards { grid-template-columns: 1fr; }
-  #idlg { padding: 20px; }
+  .inst-head h2 { font-size: 20px; }
+  .inst-card { padding: 12px 10px 12px 14px; }
+  .btns button { min-height: 42px; }
 }
 #ptitle { display: none; }
 @media print {
@@ -615,6 +776,7 @@ dialog input, dialog select { width: 100%; background: var(--surf); border: 1px 
   <label for="m">Model</label>
   <input id="m" list="model-list" placeholder="gemini-3.1-pro-preview">
   <datalist id="model-list">
+    <option value="gemini-4-carbon">Gemini 4 Carbon ($2.00 / $10.00 · Implicit-only 95% off)</option>
     <option value="gemini-4-argon">Gemini 4 Argon ($2.00 / $10.00 · Implicit-only 95% off)</option>
     <option value="gemini-3.1-pro-preview">Gemini 3.1 Pro ($2.00 / $12.00 · $4.50/1M/hr storage)</option>
     <option value="gemini-3-flash-preview">Gemini 3 Flash ($0.50 / $3.00 · $1.00/1M/hr storage)</option>
@@ -828,41 +990,53 @@ const ICO = {
 };
 
 const MODEL_PRICING = {
-  'gemini-3.1-pro-preview': { inRate: 2.00, outRate: 12.00, inRateHigh: 4.00, outRateHigh: 18.00, cacheMult: 0.10, storageRate: 4.50, searchRate: 0.00, minCacheTok: 4096, expSupported: true, omitTemp: false },
-  'gemini-3-pro-preview':   { inRate: 2.00, outRate: 12.00, inRateHigh: 4.00, outRateHigh: 18.00, cacheMult: 0.10, storageRate: 4.50, searchRate: 0.00, minCacheTok: 4096, expSupported: true, omitTemp: false },
-  'gemini-4-argon':         { inRate: 2.00, outRate: 10.00, inRateHigh: 2.00, outRateHigh: 10.00, cacheMult: 0.05, storageRate: 0.00, searchRate: 0.00, minCacheTok: 4096, expSupported: false, omitTemp: true },
-  'gemini-2.5-pro':         { inRate: 1.25, outRate: 10.00, inRateHigh: 2.50, outRateHigh: 15.00, cacheMult: 0.10, storageRate: 4.50, searchRate: 0.00, minCacheTok: 2048, expSupported: true, omitTemp: false },
-  'gemini-3-flash-preview': { inRate: 0.50, outRate: 3.00,  inRateHigh: 0.50, outRateHigh: 3.00,  cacheMult: 0.10, storageRate: 1.00, searchRate: 0.00, minCacheTok: 4096, expSupported: true, omitTemp: false },
-  'gemini-2.5-flash':       { inRate: 0.30, outRate: 2.50,  inRateHigh: 0.30, outRateHigh: 2.50,  cacheMult: 0.10, storageRate: 1.00, searchRate: 0.00, minCacheTok: 2048, expSupported: true, omitTemp: false },
-  'gemini-2.5-flash-lite':  { inRate: 0.10, outRate: 0.40,  inRateHigh: 0.10, outRateHigh: 0.40,  cacheMult: 0.10, storageRate: 1.00, searchRate: 0.00, minCacheTok: 2048, expSupported: true, omitTemp: false }
+  'gemini-4-carbon':                  { inRate: 2.00, outRate: 10.00, inRateHigh: 2.00, outRateHigh: 10.00, cacheMult: 0.05, storageRate: 0.00, searchRate: 0.00, minCacheTok: 4096, expSupported: false, omitTemp: true,  isGemini4: true },
+  'gemini-4-carbon-cyber-permissive': { inRate: 2.00, outRate: 10.00, inRateHigh: 2.00, outRateHigh: 10.00, cacheMult: 0.05, storageRate: 0.00, searchRate: 0.00, minCacheTok: 4096, expSupported: false, omitTemp: true,  isGemini4: true },
+  'gemini-4-argon':                   { inRate: 2.00, outRate: 10.00, inRateHigh: 2.00, outRateHigh: 10.00, cacheMult: 0.05, storageRate: 0.00, searchRate: 0.00, minCacheTok: 4096, expSupported: false, omitTemp: true,  isGemini4: true },
+  'gemini-3.1-pro-preview':           { inRate: 2.00, outRate: 12.00, inRateHigh: 4.00, outRateHigh: 18.00, cacheMult: 0.10, storageRate: 4.50, searchRate: 0.00, minCacheTok: 4096, expSupported: true,  omitTemp: false, isGemini4: false },
+  'gemini-3-pro-preview':             { inRate: 2.00, outRate: 12.00, inRateHigh: 4.00, outRateHigh: 18.00, cacheMult: 0.10, storageRate: 4.50, searchRate: 0.00, minCacheTok: 4096, expSupported: true,  omitTemp: false, isGemini4: false },
+  'gemini-2.5-pro':                   { inRate: 1.25, outRate: 10.00, inRateHigh: 2.50, outRateHigh: 15.00, cacheMult: 0.10, storageRate: 4.50, searchRate: 0.00, minCacheTok: 2048, expSupported: true,  omitTemp: false, isGemini4: false },
+  'gemini-3-flash-preview':           { inRate: 0.50, outRate: 3.00,  inRateHigh: 0.50, outRateHigh: 3.00,  cacheMult: 0.10, storageRate: 1.00, searchRate: 0.00, minCacheTok: 4096, expSupported: true,  omitTemp: false, isGemini4: false },
+  'gemini-2.5-flash':                 { inRate: 0.30, outRate: 2.50,  inRateHigh: 0.30, outRateHigh: 2.50,  cacheMult: 0.10, storageRate: 1.00, searchRate: 0.00, minCacheTok: 2048, expSupported: true,  omitTemp: false, isGemini4: false },
+  'gemini-2.5-flash-lite':            { inRate: 0.10, outRate: 0.40,  inRateHigh: 0.10, outRateHigh: 0.40,  cacheMult: 0.10, storageRate: 1.00, searchRate: 0.00, minCacheTok: 2048, expSupported: true,  omitTemp: false, isGemini4: false }
 };
 
+function normalizeModelId(modelName) {
+  const raw = String(modelName || '').trim().replace(/^models\//i, '');
+  const low = raw.toLowerCase();
+  if (low === 'gemini 4 carbon' || low === 'gemini-4.0-carbon' || low === 'carbon') return 'gemini-4-carbon';
+  if (low === 'gemini 4 argon' || low === 'gemini-4.0-argon' || low === 'argon') return 'gemini-4-argon';
+  return raw;
+}
+
 function getModelPreset(modelName) {
-  const m = String(modelName || '').trim().toLowerCase();
+  const m = normalizeModelId(modelName).toLowerCase();
   if (MODEL_PRICING[m]) return MODEL_PRICING[m];
+  if (m.includes('4-carbon') || m.includes('carbon')) return MODEL_PRICING['gemini-4-carbon'];
   if (m.includes('4-argon') || m.includes('gemini-4') || m.includes('argon')) return MODEL_PRICING['gemini-4-argon'];
   if (m.includes('flash-lite')) return MODEL_PRICING['gemini-2.5-flash-lite'];
-  if (m.includes('3-flash') || m.includes('3.1-flash') || m.includes('3.8-flash')) return MODEL_PRICING['gemini-3-flash-preview'];
+  if (m.includes('3-flash') || m.includes('3.1-flash') || m.includes('3.6-flash') || m.includes('3.8-flash')) return MODEL_PRICING['gemini-3-flash-preview'];
   if (m.includes('flash')) return MODEL_PRICING['gemini-2.5-flash'];
   if (m.includes('2.5-pro')) return MODEL_PRICING['gemini-2.5-pro'];
   return MODEL_PRICING['gemini-3.1-pro-preview'];
 }
 
 function buildThinkingConfig(modelName, level) {
-  const m = String(modelName || '').trim().toLowerCase();
-  const lvl = (level || 'high').toLowerCase();
+  const m = normalizeModelId(modelName).toLowerCase();
+  const rawLvl = String(level || 'high').toLowerCase();
   if (m.includes('gemini-2.5')) {
-    const budgetMap = { low: 1024, medium: 8192, high: 24576 };
-    return { thinkingBudget: budgetMap[lvl] || 8192, includeThoughts: true };
+    const budgetMap = { minimal: 0, low: 1024, medium: 8192, high: 24576 };
+    return { thinkingBudget: budgetMap[rawLvl] ?? 8192, includeThoughts: true };
   }
-  return { thinkingLevel: lvl, includeThoughts: true };
+  const safeLvl = ['low', 'medium', 'high'].includes(rawLvl) ? rawLvl : 'medium';
+  return { thinkingLevel: safeLvl, includeThoughts: true };
 }
 
 function getToolsSignature() {
   return JSON.stringify({ searchOn: Boolean(S.searchOn), codeExecOn: Boolean(S.codeExecOn) });
 }
 
-const FORMAT_INSTRUCTION = "Use rich Markdown formatting: actively use Markdown tables for comparisons, structured data, specs, pros/cons, and schedules; use headings, bullet lists, bold key terms, and fenced code blocks instead of plain text paragraphs. When outputting code or HTML files, always output the complete, unbroken file inside a single fenced code block.";
+const FORMAT_INSTRUCTION = "Use rich Markdown formatting: actively use Markdown tables for comparisons, structured data, specs, pros/cons, and schedules; use headings, bullet lists, bold key terms, and fenced code blocks instead of plain text paragraphs. When outputting code or HTML files, always output the complete, unbroken file inside a single fenced code block without splitting it.";
 const DEFAULT_INSTRUCTIONS = [
   "AVOID Sycophancy or POSITIVE BIAS as much as possible answer must be grounded to reality and factually accurate.",
   "I don't need validation or cheerful responses that I am right or wrong, I just want answers.",
@@ -875,18 +1049,22 @@ const ls = (k, d) => { try { return JSON.parse(localStorage.getItem(k)) ?? d; } 
 let S = {
   key: '', model: 'gemini-3.1-pro-preview', level: 'high', temp: 1.0, maxTok: '',
   searchOn: false, codeExecOn: false, sys: '', instOn: true, insts: null,
-  fmtMigrated: false, pricingV3: false, theme: '',
+  fmtMigrated: false, pricingV3: false, pricingV4: false, theme: '',
   inr: 86.5, inRate: 2.00, outRate: 12.00, inRateHigh: 4.00, outRateHigh: 18.00, cacheMult: 0.10, storageRate: 4.50, searchRate: 0.00,
   newChatExpCache: false, defaultCacheTtlSec: 3600, prefixLockOn: true, regenFreshGrounding: true,
   ...ls('g_settings', {})
 };
 
-if (!S.pricingV3) {
+S.model = normalizeModelId(S.model || 'gemini-3.1-pro-preview');
+
+if (!S.pricingV3 || !S.pricingV4) {
   const preset = getModelPreset(S.model);
-  if ((S.model || '').toLowerCase().includes('argon')) {
-    S.cacheMult = preset.cacheMult; S.storageRate = preset.storageRate;
-    S.outRate = preset.outRate; S.inRateHigh = preset.inRateHigh; S.outRateHigh = preset.outRateHigh;
-  } else if (S.inRate === 1.25 && S.outRate === 10.00 && S.model !== 'gemini-2.5-pro') {
+  if (!preset.expSupported) {
+    S.inRate = preset.inRate; S.outRate = preset.outRate;
+    S.inRateHigh = preset.inRateHigh; S.outRateHigh = preset.outRateHigh;
+    S.cacheMult = preset.cacheMult; S.storageRate = 0;
+    S.newChatExpCache = false;
+  } else if (!S.pricingV3 && S.inRate === 1.25 && S.outRate === 10.00 && S.model !== 'gemini-2.5-pro') {
     S.inRate = preset.inRate; S.outRate = preset.outRate;
   }
   S.inRateHigh = Number.isFinite(Number(S.inRateHigh)) ? Number(S.inRateHigh) : preset.inRateHigh;
@@ -894,6 +1072,7 @@ if (!S.pricingV3) {
   S.cacheMult = Number.isFinite(Number(S.cacheMult)) ? Number(S.cacheMult) : preset.cacheMult;
   S.storageRate = Number.isFinite(Number(S.storageRate)) ? Number(S.storageRate) : preset.storageRate;
   S.pricingV3 = true;
+  S.pricingV4 = true;
 }
 if (!Number.isFinite(Number(S.storageRate))) S.storageRate = getModelPreset(S.model).storageRate;
 if (!Number.isFinite(Number(S.searchRate))) S.searchRate = 0.00;
@@ -1306,12 +1485,17 @@ async function disconnectExplicitCache(c, keepEnabledForUpdate = false) {
 }
 
 async function invalidateActiveCacheOnConfigChange(reasonLabel) {
+  const preset = getModelPreset(S.model);
+  if (!preset.expSupported && S.newChatExpCache) {
+    S.newChatExpCache = false;
+    saveS();
+  }
   for (const c of chats) {
     const ec = c.expCache;
-    if (ec && ec.active && ec.name) {
+    if (!ec) continue;
+    if (ec.active && ec.name) {
       const modelChanged = ec.model && ec.model !== S.model;
       const toolsChanged = ec.toolsKey && ec.toolsKey !== getToolsSignature();
-      const preset = getModelPreset(S.model);
       if (modelChanged || toolsChanged || !preset.expSupported) {
         const res = await disconnectExplicitCache(c, preset.expSupported);
         if (res.ok) {
@@ -1319,6 +1503,10 @@ async function invalidateActiveCacheOnConfigChange(reasonLabel) {
           await save(c).catch(() => {});
         }
       }
+    } else if (!preset.expSupported && ec.enabled) {
+      ec.enabled = false;
+      ec.lastStatus = '';
+      await save(c).catch(() => {});
     }
   }
   renderCacheBar(); renderList(); updateSidebarCacheBadge(); tag();
@@ -1442,7 +1630,14 @@ function renderCacheBar() {
   const c = chats.find(x => x.id === cur);
   if (!c) { bar.classList.remove('show', 'active-cache'); bar.innerHTML = ''; return; }
   const ec = ensureChatCacheObj(c);
+  const preset = getModelPreset(S.model);
   const isBusy = cacheLocks.has(c.id);
+  if (!preset.expSupported && !ec.active && !isBusy) {
+    if (ec.enabled) { ec.enabled = false; ec.lastStatus = ''; save(c).catch(() => {}); }
+    bar.classList.remove('show', 'active-cache');
+    bar.innerHTML = '';
+    return;
+  }
   if (!ec.enabled && !ec.active && !isBusy) { bar.classList.remove('show', 'active-cache'); bar.innerHTML = ''; return; }
 
   const disAttr = isBusy ? ' disabled' : '';
@@ -1476,7 +1671,6 @@ function renderCacheBar() {
         '<button type="button" class="cb-btn disconnect" id="cb-disconnect"' + disAttr + ' title="Immediately delete cachedContents resource from Google servers and stop storage billing">🛑 Disconnect &amp; Delete Cache</button>' +
       '</div>';
   } else {
-    const preset = getModelPreset(S.model);
     const minTok = preset.minCacheTok || 2048;
     const estTok = getExactContextTokens(c.msgs, getActiveSysText(c));
     const ttlMin = Math.round((ec.ttlSec || 3600) / 60);
@@ -3577,19 +3771,42 @@ function renderTokenBar(el, totalTok, isExact) {
   if (!totalTok || totalTok <= 0) { el.innerHTML = ''; return; }
   const c = chats.find(x => x.id === cur);
   const ec = c?.expCache;
-  const cachedAlready = (ec && ec.active && ec.name) ? (ec.cachedTokens || 0) : 0;
-  const bd = calcTurnCost({ p: totalTok, cached: cachedAlready, c: 0 });
-  const inCost = fmtCost(bd.inputUSD, false);
-  const prefix = isExact ? '' : '~';
   const preset = getModelPreset(S.model);
   const minTok = preset.minCacheTok || 2048;
   const discPct = Math.round((1 - (preset.cacheMult ?? 0.10)) * 100);
 
+  let cachedAlready = 0;
+  let implicitEst = false;
+  if (ec && ec.active && ec.name) {
+    cachedAlready = ec.cachedTokens || 0;
+  } else if (c && Array.isArray(c.msgs) && c.msgs.length >= 2) {
+    const lastModel = [...c.msgs].reverse().find(m => m.role === 'model' && (Number(m.usage?.p) || 0) >= minTok);
+    if (lastModel) {
+      const prevPromptTok = Number(lastModel.usage.p) || 0;
+      const addedSincePrev = Math.max(0, totalTok - prevPromptTok + (Number(lastModel.usage.th) || 0));
+      const eligiblePrefix = preset.isGemini4 && addedSincePrev < 2050
+        ? Math.max(0, prevPromptTok - 2050)
+        : prevPromptTok;
+      if (eligiblePrefix >= minTok) {
+        cachedAlready = Math.min(totalTok, eligiblePrefix);
+        implicitEst = true;
+      }
+    }
+  }
+
+  const bd = calcTurnCost({ p: totalTok, cached: cachedAlready, c: 0 });
+  const inCost = fmtCost(bd.inputUSD, false);
+  const prefix = isExact ? '' : '~';
+
   let cacheHint = '';
   if (ec && ec.active && ec.name) {
     cacheHint = ' · <span class="t-ok">📌 ' + cachedAlready.toLocaleString() + ' tok cached (' + discPct + '% off)</span>';
+  } else if (implicitEst && cachedAlready > 0) {
+    cacheHint = ' · <span class="t-ok" title="Eligible Implicit Cache prefix (~' + discPct + '% off on cache hit)">⚡ ~' + cachedAlready.toLocaleString() + ' tok prefix (' + discPct + '% off on hit)</span>';
   } else if (totalTok >= minTok) {
     cacheHint = ' · <span class="t-ok" title="Meets ' + minTok.toLocaleString() + ' token minimum for Context Caching">⚡ Cache-ready (≥' + minTok.toLocaleString() + ')</span>';
+  } else if (!preset.expSupported) {
+    cacheHint = ' · <span>Need ≥' + minTok.toLocaleString() + ' tok for Implicit Cache</span>';
   }
 
   const tierWarn = bd.isLongCtx ? ' <span class="t-warn" title="Exceeds 200k tokens: >200k long-context rates apply">(&gt;200k tier)</span>' : '';
@@ -3669,13 +3886,20 @@ function appendStreamPart(parts, p) {
   const clean = { ...p };
   const prev = parts[parts.length - 1];
 
-  if (prev && isPureTextOrThoughtPart(prev) && isPureTextOrThoughtPart(clean)) {
-    const sameThoughtFlag = Boolean(prev.thought) === Boolean(clean.thought);
-    if (!prev.thoughtSignature && sameThoughtFlag) {
-      if (typeof clean.text === 'string' && clean.text.length > 0) prev.text = (prev.text || '') + clean.text;
-      if (clean.thoughtSignature) prev.thoughtSignature = clean.thoughtSignature;
-      return;
+  // Never merge a Part containing thoughtSignature with one that does not,
+  // and never merge two signed Parts. Keeps UI thought summaries separate from signatures.
+  if (
+    prev &&
+    isPureTextOrThoughtPart(prev) &&
+    isPureTextOrThoughtPart(clean) &&
+    !prev.thoughtSignature &&
+    !clean.thoughtSignature &&
+    Boolean(prev.thought) === Boolean(clean.thought)
+  ) {
+    if (typeof clean.text === 'string' && clean.text.length > 0) {
+      prev.text = (prev.text || '') + clean.text;
     }
+    return;
   }
   parts.push(clean);
 }
@@ -4126,7 +4350,16 @@ async function send(env = null) {
   await run(c, null, null, { ...(env || {}), preLockedCtrl: reservedCtrl });
 }
 
-// Synchronously locks `ctrl` on line 1 (or adopts preLockedCtrl from `send()`) and keeps `ctrl` locked until final persistence & cleanup complete
+function extractCachedTokenCount(u) {
+  if (!u || typeof u !== 'object') return 0;
+  const direct = Number(u.cachedContentTokenCount ?? u.totalCachedTokens);
+  if (Number.isFinite(direct) && direct > 0) return direct;
+  if (Array.isArray(u.cacheTokensDetails)) {
+    return u.cacheTokensDetails.reduce((sum, d) => sum + (Number(d?.tokenCount) || 0), 0);
+  }
+  return 0;
+}
+
 async function run(c, redoMsg = null, regenGroundMode = null, env = null) {
   const fetchFn = env?.fetch || window.fetch.bind(window);
   const saveChatFn = env?.save || (ch => save(ch, env?.storageOpts || null));
@@ -4206,7 +4439,8 @@ async function run(c, redoMsg = null, regenGroundMode = null, env = null) {
   }
 
   const ec = ensureChatCacheObj(c);
-  const preset = getModelPreset(activeS.model);
+  const targetModelId = normalizeModelId(activeS.model);
+  const preset = getModelPreset(targetModelId);
   const minTok = preset.minCacheTok || 2048;
 
   let patchTimer = null;
@@ -4235,12 +4469,16 @@ async function run(c, redoMsg = null, regenGroundMode = null, env = null) {
 
     checkExpiredLocalCaches();
     if (ec.active && ec.name) {
-      if ((ec.model && ec.model !== activeS.model) || (ec.toolsKey && ec.toolsKey !== getToolsSignature()) || !preset.expSupported) {
+      if ((ec.model && ec.model !== targetModelId) || (ec.toolsKey && ec.toolsKey !== getToolsSignature()) || !preset.expSupported) {
         const delRes = await disconnectExplicitCache(c, preset.expSupported);
         if (!delRes.ok) {
           throw new Error(delRes.error || 'Could not delete incompatible server cache before generating.');
         }
       }
+    }
+    if (!preset.expSupported && ec.enabled && !ec.active) {
+      ec.enabled = false;
+      ec.lastStatus = '';
     }
 
     if (preset.expSupported && ec.enabled && priorMsgs.length >= 2) {
@@ -4260,7 +4498,18 @@ async function run(c, redoMsg = null, regenGroundMode = null, env = null) {
     const sysText = getActiveSysText(c);
     if (activeS.prefixLockOn && !c.lockedSys) c.lockedSys = sysText;
 
-    const genCfg = { thinkingConfig: buildThinkingConfig(activeS.model, activeS.level) };
+    if (activeS.prefixLockOn) {
+      if (!c.lockedTools || typeof c.lockedTools !== 'object') {
+        c.lockedTools = priorMsgs.length === 1
+          ? { searchOn: Boolean(activeS.searchOn), codeExecOn: Boolean(activeS.codeExecOn) }
+          : { searchOn: false, codeExecOn: false };
+      } else {
+        if (c.lockedTools.searchOn && !activeS.searchOn) c.lockedTools.searchOn = false;
+        if (c.lockedTools.codeExecOn && !activeS.codeExecOn) c.lockedTools.codeExecOn = false;
+      }
+    }
+
+    const genCfg = { thinkingConfig: buildThinkingConfig(targetModelId, activeS.level) };
     if (!preset.omitTemp && Number.isFinite(Number(activeS.temp))) genCfg.temperature = Number(activeS.temp);
     if (activeS.maxTok && Number(activeS.maxTok) > 0) genCfg.maxOutputTokens = Number(activeS.maxTok);
 
@@ -4275,19 +4524,25 @@ async function run(c, redoMsg = null, regenGroundMode = null, env = null) {
       if (attempt === 0) reply.groundingWarning = '';
       streamMdCache.delete(replyIdx);
 
-      const useExplicitNow = Boolean(ec.active && ec.name && ec.cachedMsgCount > 0 && ec.cachedMsgCount < priorMsgs.length);
+      const useExplicitNow = Boolean(preset.expSupported && ec.active && ec.name && ec.cachedMsgCount > 0 && ec.cachedMsgCount < priorMsgs.length);
       activeExplicitAttempt = useExplicitNow;
 
-      const useTailBypass = !useExplicitNow && activeS.prefixLockOn && (activeS.searchOn || activeS.codeExecOn) && priorMsgs.length >= 2;
+      const prefixSearchOn = activeS.prefixLockOn ? Boolean(c.lockedTools?.searchOn && activeS.searchOn) : Boolean(activeS.searchOn);
+      const prefixCodeOn = activeS.prefixLockOn ? Boolean(c.lockedTools?.codeExecOn && activeS.codeExecOn) : Boolean(activeS.codeExecOn);
+      const extraSearchOn = Boolean(activeS.searchOn && !prefixSearchOn);
+      const extraCodeOn = Boolean(activeS.codeExecOn && !prefixCodeOn);
+
+      const useTailBypass = !useExplicitNow && activeS.prefixLockOn && (extraSearchOn || extraCodeOn) && priorMsgs.length >= 2;
       if (useTailBypass && !prepassDone) {
         prepassDone = true;
         reply.thought = forceFreshGrounding
           ? 'Fetching fresh live tool grounding (Prefix-Isolated Tail Grounding)…'
           : 'Checking live tools (Prefix-Isolated Tail Grounding)…';
         flushStreamPatch();
+        const prepassEnv = { ...(env || {}), settings: { ...activeS, model: targetModelId, searchOn: extraSearchOn, codeExecOn: extraCodeOn } };
         const prepassRes = await runTailToolPrepass(c, priorMsgs, reply, runSignal, {
           turnNum, versionNum, msgIdx: replyIdx, promptText: promptSnippet, attCount: promptAttCount
-        }, forceFreshGrounding, env);
+        }, forceFreshGrounding, prepassEnv);
         reply.thought = '';
         if (!prepassRes.ok) {
           if (prepassRes.aborted || runSignal.aborted) throw new DOMException('Aborted', 'AbortError');
@@ -4308,17 +4563,17 @@ async function run(c, redoMsg = null, regenGroundMode = null, env = null) {
         body.generationConfig = genCfg;
       } else {
         if (sysText) body.systemInstruction = { parts: [{ text: sysText }] };
-        if (!useTailBypass || fallbackDirectTools) {
-          const tools = [];
-          if (activeS.searchOn) tools.push({ googleSearch: {} });
-          if (activeS.codeExecOn) tools.push({ codeExecution: {} });
-          if (tools.length) body.tools = tools;
-        }
+        const sendSearchTool = fallbackDirectTools || !activeS.prefixLockOn ? Boolean(activeS.searchOn) : prefixSearchOn;
+        const sendCodeTool = fallbackDirectTools || !activeS.prefixLockOn ? Boolean(activeS.codeExecOn) : prefixCodeOn;
+        const tools = [];
+        if (sendSearchTool) tools.push({ googleSearch: {} });
+        if (sendCodeTool) tools.push({ codeExecution: {} });
+        if (tools.length) body.tools = tools;
         body.contents = await toContentsAsync(priorMsgs, env?.storageOpts || null);
         body.generationConfig = genCfg;
       }
 
-      const r = await fetchFn(GAPI + '/v1beta/models/' + encodeURIComponent(activeS.model) + ':streamGenerateContent?alt=sse', {
+      const r = await fetchFn(GAPI + '/v1beta/models/' + encodeURIComponent(targetModelId) + ':streamGenerateContent?alt=sse', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'x-goog-api-key': activeS.key },
         body: JSON.stringify(body),
@@ -4409,21 +4664,28 @@ async function run(c, redoMsg = null, regenGroundMode = null, env = null) {
 
           const u = j.usageMetadata;
           if (u) {
+            const prevU = reply.usage;
             const directSearchQ = Array.isArray(cand?.groundingMetadata?.webSearchQueries)
               ? cand.groundingMetadata.webSearchQueries.length
               : ((reply.prepassUsage && !reply.prepassUsage.failed) ? 0 : reply.queries.length);
+            const pTok = Math.max(prevU?.p || 0, Number(u.promptTokenCount ?? u.totalInputTokens) || 0);
+            const cachedTok = Math.max(prevU?.cached || 0, extractCachedTokenCount(u));
+            const toolTok = Math.max(prevU?.toolUse || 0, Number(u.toolUsePromptTokenCount ?? u.totalToolUseTokens) || 0);
+            const thTok = Math.max(prevU?.th || 0, Number(u.thoughtsTokenCount ?? u.totalThoughtTokens) || 0);
+            const cTok = Math.max(prevU?.c || 0, Number(u.candidatesTokenCount ?? u.totalOutputTokens) || 0);
+            const totTok = Math.max(prevU?.t || 0, Number(u.totalTokenCount ?? u.totalTokens) || (pTok + toolTok + thTok + cTok));
             reply.usage = {
-              p: u.promptTokenCount || 0,
-              cached: u.cachedContentTokenCount || 0,
-              toolUse: u.toolUsePromptTokenCount || 0,
-              th: u.thoughtsTokenCount || 0,
-              c: u.candidatesTokenCount || 0,
-              t: u.totalTokenCount || 0,
-              searchQueries: directSearchQ,
-              model: activeS.model,
+              p: pTok,
+              cached: Math.min(pTok, cachedTok),
+              toolUse: toolTok,
+              th: thTok,
+              c: cTok,
+              t: totTok,
+              searchQueries: Math.max(prevU?.searchQueries || 0, directSearchQ),
+              model: targetModelId,
               cacheType: useExplicitNow ? 'explicit' : 'implicit',
               cacheName: useExplicitNow ? ec.name : null,
-              rates: getActiveRates(activeS, activeS.model),
+              rates: getActiveRates(activeS, targetModelId),
               estimated: true
             };
           }
@@ -4486,9 +4748,9 @@ async function run(c, redoMsg = null, regenGroundMode = null, env = null) {
             p: estPrompt, cached: Math.min(estPrompt, estCached), toolUse: 0,
             th: estTh, c: estCand, t: estPrompt + estTh + estCand,
             searchQueries: (reply.prepassUsage && !reply.prepassUsage.failed) ? 0 : (reply.queries?.length || 0),
-            model: activeS.model, cacheType: activeExplicitAttempt ? 'explicit' : 'implicit',
+            model: targetModelId, cacheType: activeExplicitAttempt ? 'explicit' : 'implicit',
             cacheName: activeExplicitAttempt ? ec.name : null,
-            rates: getActiveRates(activeS, activeS.model), estimated: true, canceled: wasCanceled
+            rates: getActiveRates(activeS, targetModelId), estimated: true, canceled: wasCanceled
           };
         } else if (wasCanceled) {
           reply.usage.estimated = true;
@@ -4744,8 +5006,14 @@ function fillPresetInputs(modelName) {
   $('r-search').value = p.searchRate ?? 0.00;
 }
 $('m').addEventListener('change', () => {
-  const mVal = $('m').value.trim().toLowerCase();
-  if (MODEL_PRICING[mVal] || mVal.includes('gemini-') || mVal.includes('gemma-') || mVal.includes('argon')) fillPresetInputs(mVal);
+  const mVal = normalizeModelId($('m').value).toLowerCase();
+  if (MODEL_PRICING[mVal] || mVal.includes('gemini-') || mVal.includes('gemma-') || mVal.includes('carbon') || mVal.includes('argon')) {
+    fillPresetInputs(mVal);
+  }
+});
+$('m').addEventListener('input', () => {
+  const mVal = normalizeModelId($('m').value).toLowerCase();
+  if (MODEL_PRICING[mVal]) fillPresetInputs(mVal);
 });
 $('reset-rates').onclick = () => fillPresetInputs($('m').value.trim() || S.model);
 
@@ -4839,24 +5107,32 @@ $('btn-code').onclick = async () => {
 $('tag').onclick = openSet;
 $('ok').onclick = async () => {
   const prevModel = S.model;
-  const newModel = $('m').value.trim() || 'gemini-3.1-pro-preview';
+  const newModel = normalizeModelId($('m').value.trim() || 'gemini-3.1-pro-preview');
   const preset = getModelPreset(newModel);
+  const prevPreset = getModelPreset(prevModel);
+  const modelChanged = prevModel !== newModel;
+
+  if (modelChanged && parseFloat($('r-cache').value) === prevPreset.cacheMult && parseFloat($('r-out').value) === prevPreset.outRate) {
+    fillPresetInputs(newModel);
+  }
+
   const tempVal = parseFloat($('g-temp').value), maxVal = parseInt($('g-max').value, 10);
   S = {
     ...S, key: $('k').value.trim(), model: newModel, level: $('t').value,
     temp: Number.isFinite(tempVal) ? Math.min(2, Math.max(0, tempVal)) : 1.0,
     maxTok: Number.isFinite(maxVal) && maxVal > 0 ? maxVal : '',
+    newChatExpCache: preset.expSupported ? S.newChatExpCache : false,
     inr: parseFloat($('r-inr').value) > 0 ? parseFloat($('r-inr').value) : 86.5,
     inRate: parseFloat($('r-in').value) >= 0 ? parseFloat($('r-in').value) : preset.inRate,
     outRate: parseFloat($('r-out').value) >= 0 ? parseFloat($('r-out').value) : preset.outRate,
     inRateHigh: parseFloat($('r-in-hi').value) >= 0 ? parseFloat($('r-in-hi').value) : preset.inRateHigh,
     outRateHigh: parseFloat($('r-out-hi').value) >= 0 ? parseFloat($('r-out-hi').value) : preset.outRateHigh,
     cacheMult: parseFloat($('r-cache').value) >= 0 ? parseFloat($('r-cache').value) : preset.cacheMult,
-    storageRate: parseFloat($('r-store').value) >= 0 ? parseFloat($('r-store').value) : preset.storageRate,
+    storageRate: preset.expSupported ? (parseFloat($('r-store').value) >= 0 ? parseFloat($('r-store').value) : preset.storageRate) : 0,
     searchRate: parseFloat($('r-search').value) >= 0 ? parseFloat($('r-search').value) : 0.00
   };
   saveS(); $('dlg').close();
-  if (prevModel !== newModel) await invalidateActiveCacheOnConfigChange('Model');
+  if (modelChanged) await invalidateActiveCacheOnConfigChange('Model');
   tag(); render();
 };
 $('x').onclick = () => $('dlg').close();
@@ -5923,6 +6199,7 @@ if (innerWidth <= 760) $('side').classList.add('closed');
   if (!S.key) setTimeout(openSet, 300);
   else reconcileServerCaches();
 })();
+
 </script>
 </body>
 </html>
