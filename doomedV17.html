@@ -1311,11 +1311,17 @@ function checkExpiredLocalCaches() {
   return changed;
 }
 
+function isDirectToolInflatedUsage(m) {
+  if (!m || !m.usage) return false;
+  if (m.usage.usedDirectTools) return true;
+  return !m.prepassUsage && ((Number(m.usage.searchQueries) || 0) > 0 || (Number(m.usage.toolUse) || 0) > 0);
+}
+
 function getExactContextTokens(msgsSlice, sysText) {
   const arr = msgsSlice || [];
   for (let i = arr.length - 1; i >= 0; i--) {
     const m = arr[i];
-    if (m.role === 'model' && m.usage && m.usage.p > 0) {
+    if (m.role === 'model' && m.usage && m.usage.p > 0 && !isDirectToolInflatedUsage(m)) {
       const baseTok = (Number(m.usage.p) || 0) + (Number(m.usage.c) || 0);
       const tailMsgs = arr.slice(i + 1);
       const tailTok = tailMsgs.length ? estimateTokensLocal(toContents(tailMsgs), '') : 0;
@@ -1324,6 +1330,7 @@ function getExactContextTokens(msgsSlice, sysText) {
   }
   return estimateTokensLocal(toContents(arr), sysText);
 }
+
 
 async function verifyExactTokensForCache(modelName, contents, sysText, minTok, estTok, sliceMsgs) {
   const lastMsg = sliceMsgs[sliceMsgs.length - 1];
@@ -3780,7 +3787,9 @@ function renderTokenBar(el, totalTok, isExact) {
   if (ec && ec.active && ec.name) {
     cachedAlready = ec.cachedTokens || 0;
   } else if (c && Array.isArray(c.msgs) && c.msgs.length >= 2) {
-    const lastModel = [...c.msgs].reverse().find(m => m.role === 'model' && (Number(m.usage?.p) || 0) >= minTok);
+    const lastModel = [...c.msgs].reverse().find(
+      m => m.role === 'model' && (Number(m.usage?.p) || 0) >= minTok && !isDirectToolInflatedUsage(m)
+    );
     if (lastModel) {
       const prevPromptTok = Number(lastModel.usage.p) || 0;
       const addedSincePrev = Math.max(0, totalTok - prevPromptTok + (Number(lastModel.usage.th) || 0));
@@ -3797,14 +3806,16 @@ function renderTokenBar(el, totalTok, isExact) {
   const bd = calcTurnCost({ p: totalTok, cached: cachedAlready, c: 0 });
   const inCost = fmtCost(bd.inputUSD, false);
   const prefix = isExact ? '' : '~';
+  const isCarbonHigh = S.model.toLowerCase().includes('carbon') && S.level === 'high';
 
   let cacheHint = '';
   if (ec && ec.active && ec.name) {
     cacheHint = ' · <span class="t-ok">📌 ' + cachedAlready.toLocaleString() + ' tok cached (' + discPct + '% off)</span>';
   } else if (implicitEst && cachedAlready > 0) {
-    cacheHint = ' · <span class="t-ok" title="Eligible Implicit Cache prefix (~' + discPct + '% off on cache hit)">⚡ ~' + cachedAlready.toLocaleString() + ' tok prefix (' + discPct + '% off on hit)</span>';
+    cacheHint = ' · <span class="t-ok" title="Eligible Implicit Cache prefix (~' + discPct + '% off on hit)">⚡ ~' + cachedAlready.toLocaleString() + ' tok prefix (' + discPct + '% off)</span>' +
+      (isCarbonHigh ? ' <span class="t-warn" title="Carbon High often takes >5m per turn, which can expire AI Studio hot implicit cache before your next turn. Use Med for multi-turn loops.">(High >5m TTL risk)</span>' : '');
   } else if (totalTok >= minTok) {
-    cacheHint = ' · <span class="t-ok" title="Meets ' + minTok.toLocaleString() + ' token minimum for Context Caching">⚡ Cache-ready (≥' + minTok.toLocaleString() + ')</span>';
+    cacheHint = ' · <span class="t-ok" title="This turn writes a ≥' + minTok.toLocaleString() + ' tok prefix so the NEXT turn can hit Implicit Cache">⚡ Seeds cache for next turn (≥' + minTok.toLocaleString() + ')</span>';
   } else if (!preset.expSupported) {
     cacheHint = ' · <span>Need ≥' + minTok.toLocaleString() + ' tok for Implicit Cache</span>';
   }
@@ -4056,10 +4067,27 @@ async function runTailToolPrepass(c, priorMsgs, reply, signal, turnCtx, forceFre
     miniMsgs.push({ role: 'user', parts: [{ text: '[Recent conversation context]' }] });
     miniMsgs.push({ role: 'model', parts: [{ text: snippet }] });
   }
-  const latestAttParts = (await Promise.all((lastUserMsg.imgs || []).map(att => attachmentToPartAsync(att, env?.storageOpts || null)))).filter(Boolean);
-  const latestParts = [...latestAttParts, ...(lastUserMsg.text ? [{ text: lastUserMsg.text }] : [])];
+  const hasUserText = Boolean(lastUserMsg.text && lastUserMsg.text.trim());
+  const latestAttParts = (await Promise.all((lastUserMsg.imgs || []).map(async rawAtt => {
+    const att = await resolveAttachmentAsync(rawAtt, env?.storageOpts || null);
+    if (!att) return null;
+    const isLargeText = att.isText && typeof att.textData === 'string' && att.textData.length > 2000;
+    const isPdfDoc = att.mime === 'application/pdf' || Boolean(att.fileUri);
+    if (hasUserText && (isLargeText || isPdfDoc)) {
+      return {
+        text: '[Attached file in main context: ' + (att.name || 'attachment') +
+          ' — full contents are already provided to the main model; invoke external search/Python ONLY if live external data or computation beyond this file is required.]'
+      };
+    }
+    if (!hasUserText && isLargeText) {
+      return { text: '--- File Preview: ' + (att.name || 'attachment.txt') + ' ---\n' + att.textData.slice(0, 1500) };
+    }
+    return formatHydratedAttToPart(att);
+  }))).filter(Boolean);
+  const latestParts = [...latestAttParts, ...(hasUserText ? [{ text: lastUserMsg.text }] : [])];
   if (!latestParts.length) return { ok: true, status: 'no_tool', usage: null };
   miniMsgs.push({ role: 'user', parts: latestParts });
+
 
   const prepassSys = 'If answering the user prompt requires live web search or Python execution, invoke the appropriate tool and return a concise factual summary of the findings/results. If no external tool is needed, reply ONLY with the exact word: NO_TOOL_NEEDED';
   const body = {
@@ -4422,14 +4450,9 @@ async function run(c, redoMsg = null, regenGroundMode = null, env = null) {
   const promptSnippet = lastUserMsg ? (lastUserMsg.text || (lastUserMsg.imgs?.length ? '[Attached ' + lastUserMsg.imgs.length + ' file(s)]' : '(Empty prompt)')) : ('Turn #' + turnNum);
   const promptAttCount = Array.isArray(lastUserMsg?.imgs) ? lastUserMsg.imgs.length : 0;
 
-  let historyCarryTok = 0;
-  for (let i = priorMsgs.length - 1; i >= 0; i--) {
-    const pm = priorMsgs[i];
-    if (pm.role === 'model' && pm.usage && pm.usage.p > 0) {
-      historyCarryTok = (Number(pm.usage.p) || 0) + (Number(pm.usage.c) || 0);
-      break;
-    }
-  }
+  const historyCarryTok = priorMsgs.length >= 2
+    ? getExactContextTokens(priorMsgs.slice(0, priorMsgs.length - 1), getActiveSysText(c))
+    : 0;
 
   if (!isHeadless) {
     $('tokc').innerHTML = '';
@@ -4497,24 +4520,19 @@ async function run(c, redoMsg = null, regenGroundMode = null, env = null) {
 
     const sysText = getActiveSysText(c);
     if (activeS.prefixLockOn && !c.lockedSys) c.lockedSys = sysText;
-
-    if (activeS.prefixLockOn) {
-      if (!c.lockedTools || typeof c.lockedTools !== 'object') {
-        c.lockedTools = priorMsgs.length === 1
-          ? { searchOn: Boolean(activeS.searchOn), codeExecOn: Boolean(activeS.codeExecOn) }
-          : { searchOn: false, codeExecOn: false };
-      } else {
-        if (c.lockedTools.searchOn && !activeS.searchOn) c.lockedTools.searchOn = false;
-        if (c.lockedTools.codeExecOn && !activeS.codeExecOn) c.lockedTools.codeExecOn = false;
-      }
-    }
+    if (c.lockedTools) delete c.lockedTools; // Heal chats saved by unpatched V17
 
     const genCfg = { thinkingConfig: buildThinkingConfig(targetModelId, activeS.level) };
     if (!preset.omitTemp && Number.isFinite(Number(activeS.temp))) genCfg.temperature = Number(activeS.temp);
     if (activeS.maxTok && Number(activeS.maxTok) > 0) genCfg.maxOutputTokens = Number(activeS.maxTok);
 
+    const estPriorContextTok = priorMsgs.length >= 2
+      ? getExactContextTokens(priorMsgs.slice(0, priorMsgs.length - 1), sysText)
+      : 0;
+
     let prepassDone = false;
     let fallbackDirectTools = false;
+    let sentDirectTools = false;
 
     for (let attempt = 0; attempt < 2; attempt++) {
       reply.reqId = null;
@@ -4527,27 +4545,28 @@ async function run(c, redoMsg = null, regenGroundMode = null, env = null) {
       const useExplicitNow = Boolean(preset.expSupported && ec.active && ec.name && ec.cachedMsgCount > 0 && ec.cachedMsgCount < priorMsgs.length);
       activeExplicitAttempt = useExplicitNow;
 
-      const prefixSearchOn = activeS.prefixLockOn ? Boolean(c.lockedTools?.searchOn && activeS.searchOn) : Boolean(activeS.searchOn);
-      const prefixCodeOn = activeS.prefixLockOn ? Boolean(c.lockedTools?.codeExecOn && activeS.codeExecOn) : Boolean(activeS.codeExecOn);
-      const extraSearchOn = Boolean(activeS.searchOn && !prefixSearchOn);
-      const extraCodeOn = Boolean(activeS.codeExecOn && !prefixCodeOn);
-
-      const useTailBypass = !useExplicitNow && activeS.prefixLockOn && (extraSearchOn || extraCodeOn) && priorMsgs.length >= 2;
+      // Run Prefix-Isolated Tail Grounding from Turn 1 (>= 1) so `body.tools` never pollutes or flips the main prefix
+      const useTailBypass = !useExplicitNow && activeS.prefixLockOn && (activeS.searchOn || activeS.codeExecOn) && priorMsgs.length >= 1;
       if (useTailBypass && !prepassDone) {
         prepassDone = true;
         reply.thought = forceFreshGrounding
           ? 'Fetching fresh live tool grounding (Prefix-Isolated Tail Grounding)…'
           : 'Checking live tools (Prefix-Isolated Tail Grounding)…';
         flushStreamPatch();
-        const prepassEnv = { ...(env || {}), settings: { ...activeS, model: targetModelId, searchOn: extraSearchOn, codeExecOn: extraCodeOn } };
+        const prepassEnv = { ...(env || {}), settings: { ...activeS, model: targetModelId } };
         const prepassRes = await runTailToolPrepass(c, priorMsgs, reply, runSignal, {
           turnNum, versionNum, msgIdx: replyIdx, promptText: promptSnippet, attCount: promptAttCount
         }, forceFreshGrounding, prepassEnv);
         reply.thought = '';
         if (!prepassRes.ok) {
           if (prepassRes.aborted || runSignal.aborted) throw new DOMException('Aborted', 'AbortError');
-          fallbackDirectTools = true;
-          reply.groundingWarning = 'Tail-grounding pre-pass failed (' + (prepassRes.error || 'API error') + ') — recorded in ledger and automatically fell back to direct live tools for this turn.';
+          if (estPriorContextTok < minTok) {
+            fallbackDirectTools = true;
+            reply.groundingWarning = 'Tail-grounding pre-pass failed (' + (prepassRes.error || 'API error') + ') — recorded in ledger and fell back to direct live tools.';
+          } else {
+            fallbackDirectTools = false;
+            reply.groundingWarning = 'Tail-grounding pre-pass failed (' + (prepassRes.error || 'API error') + ') — skipped direct-tool injection to protect your ' + estPriorContextTok.toLocaleString() + '-token cached prefix.';
+          }
         }
       } else if (lastUserMsg?.tailGroundingMeta && !forceFreshGrounding) {
         const gm = lastUserMsg.tailGroundingMeta;
@@ -4561,14 +4580,16 @@ async function run(c, redoMsg = null, regenGroundMode = null, env = null) {
         body.cachedContent = ec.name;
         body.contents = await toContentsAsync(priorMsgs.slice(ec.cachedMsgCount), env?.storageOpts || null);
         body.generationConfig = genCfg;
+        sentDirectTools = false;
       } else {
         if (sysText) body.systemInstruction = { parts: [{ text: sysText }] };
-        const sendSearchTool = fallbackDirectTools || !activeS.prefixLockOn ? Boolean(activeS.searchOn) : prefixSearchOn;
-        const sendCodeTool = fallbackDirectTools || !activeS.prefixLockOn ? Boolean(activeS.codeExecOn) : prefixCodeOn;
-        const tools = [];
-        if (sendSearchTool) tools.push({ googleSearch: {} });
-        if (sendCodeTool) tools.push({ codeExecution: {} });
-        if (tools.length) body.tools = tools;
+        if (!useTailBypass || fallbackDirectTools) {
+          const tools = [];
+          if (activeS.searchOn) tools.push({ googleSearch: {} });
+          if (activeS.codeExecOn) tools.push({ codeExecution: {} });
+          if (tools.length) body.tools = tools;
+        }
+        sentDirectTools = Boolean(body.tools && body.tools.length);
         body.contents = await toContentsAsync(priorMsgs, env?.storageOpts || null);
         body.generationConfig = genCfg;
       }
@@ -4686,8 +4707,10 @@ async function run(c, redoMsg = null, regenGroundMode = null, env = null) {
               cacheType: useExplicitNow ? 'explicit' : 'implicit',
               cacheName: useExplicitNow ? ec.name : null,
               rates: getActiveRates(activeS, targetModelId),
+              usedDirectTools: sentDirectTools,
               estimated: true
             };
+
           }
           scheduleStreamPatch();
         }
