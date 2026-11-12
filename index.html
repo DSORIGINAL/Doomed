@@ -269,7 +269,7 @@ details.th .th-body { margin-top: 10px; padding-top: 10px; border-top: 1px solid
 .tok .save-pill { color: var(--ok); border: 1px solid var(--ok); font-weight: 600; padding: 0 6px; border-radius: 6px; font-size: 11px; }
 .tok .tier-pill { color: var(--danger); background: var(--danger-soft); font-weight: 600; padding: 1px 6px; border-radius: 6px; font-size: 11px; }
 .tok .cost-pill { color: var(--acc); font-weight: 600; background: var(--acc-soft); padding: 1px 8px; border-radius: 6px; }
-.err { color: var(--danger); background: var(--danger-soft); border: 1px solid var(--danger); border-radius: 12px; padding: 10px 14px; margin: 8px 0; font-size: 13.5px; }
+.err { color: var(--danger); background: var(--danger-soft); border: 1px solid var(--danger); border-radius: 12px; padding: 10px 14px; margin: 8px 0; font-size: 13.5px; white-space: pre-wrap; word-break: break-word; }
 .warn-box { color: var(--warn); background: var(--warn-soft); border: 1px solid var(--warn); border-radius: 12px; padding: 8px 12px; margin: 8px 0; font-size: 12.5px; }
 .acts { display: flex; align-items: center; gap: 6px; margin-top: 6px; color: var(--dim); flex-wrap: wrap; }
 .acts .ico { width: 32px; height: 32px; border-radius: 8px; }
@@ -1102,7 +1102,7 @@ let blobMemBytes = 0;
 window._katexReady = () => { if (cur) render(Boolean(ctrl)); };
 
 function buildFreshSysText() {
-  const baseFmt = "Format responses using structured Markdown. Whenever comparing items, listing specifications, metrics, schedules, pros/cons, or multi-variable data, present them in a Markdown table rather than plain text. When providing code or HTML files, output the complete, self-contained file inside a single fenced code block without splitting it.";
+  const baseFmt = "Format responses using structured Markdown. Whenever comparing items, listing specifications, metrics, schedules, pros/cons, or multi-variable data, present them in a Markdown table rather than plain text. When providing code or HTML files, output the complete, self-contained file inside a single fenced code block without splitting it. Never invoke google:python_interpreter or any tool/function call unless that tool is explicitly declared in the active request tools; otherwise output code directly inside standard Markdown fenced code blocks. When codeExecution is declared, format tool arguments strictly as JSON-escaped double-quoted strings (\\n, \\\") and never use Python triple quotes (\"\"\" or ''').";
   if (!S.instOn || !Array.isArray(S.insts)) return baseFmt;
   const active = S.insts.map(s => String(s || '').trim()).filter(Boolean);
   return active.length ? baseFmt + '\n\nUser instructions:\n' + active.map(s => '- ' + s).join('\n') : baseFmt;
@@ -4089,8 +4089,8 @@ async function runTailToolPrepass(c, priorMsgs, reply, signal, turnCtx, forceFre
   miniMsgs.push({ role: 'user', parts: latestParts });
 
 
-  const prepassSys = 'If answering the user prompt requires live web search or Python execution, invoke the appropriate tool and return a concise factual summary of the findings/results. If no external tool is needed, reply ONLY with the exact word: NO_TOOL_NEEDED';
-  const body = {
+
+  const prepassSys = 'If answering the user prompt requires live web search or Python execution, invoke the appropriate tool and return a concise factual summary of the findings/results. When invoking codeExecution / python_interpreter, pass code strictly as a JSON-escaped double-quoted string (\\n, \\") and NEVER use Python triple quotes ("""). If no external tool is needed, reply ONLY with the exact word: NO_TOOL_NEEDED';  const body = {
     systemInstruction: { parts: [{ text: prepassSys }] },
     tools,
     contents: miniMsgs,
@@ -4163,6 +4163,13 @@ async function runTailToolPrepass(c, priorMsgs, reply, signal, turnCtx, forceFre
       const failedUsage = await recordFailedPrepass(errMsg, j.usageMetadata || null);
       return { ok: false, status: 'failed', usage: failedUsage, error: errMsg };
     }
+    
+    if (cand.finishReason === 'MALFORMED_FUNCTION_CALL' || cand.finishReason === 'UNEXPECTED_TOOL_CALL') {
+      const errMsg = cand.finishMessage || cand.finishReason;
+      const failedUsage = await recordFailedPrepass(errMsg, j.usageMetadata || null);
+      return { ok: false, status: 'failed', usage: failedUsage, error: errMsg };
+    }
+
     const parts = cand?.content?.parts || [];
     const gm = cand?.groundingMetadata;
 
@@ -4388,6 +4395,41 @@ function extractCachedTokenCount(u) {
   return 0;
 }
 
+function appendRecoveryHintToContents(contents, hintText) {
+  if (!Array.isArray(contents) || !contents.length || !hintText) return contents;
+  const cloned = contents.slice();
+  for (let i = cloned.length - 1; i >= 0; i--) {
+    if (cloned[i].role === 'user') {
+      cloned[i] = {
+        ...cloned[i],
+        parts: [...(cloned[i].parts || []), { text: hintText }]
+      };
+      return cloned;
+    }
+  }
+  cloned.push({ role: 'user', parts: [{ text: hintText }] });
+  return cloned;
+}
+
+function extractCodeFromMalformedCall(finishMsg) {
+  const s = String(finishMsg || '');
+  if (!/python_interpreter|code_execution|executable_code/i.test(s)) return null;
+  let m = s.match(/code\s*:\s*"""([\s\S]*)"""\s*\}?\s*$/);
+  if (m && m[1].trim()) return m[1].trim();
+  m = s.match(/code\s*:\s*'''([\s\S]*)'''\s*\}?\s*$/);
+  if (m && m[1].trim()) return m[1].trim();
+  m = s.match(/code\s*:\s*"([\s\S]*)"\s*\}\s*$/);
+  if (m && m[1].trim()) {
+    return m[1]
+      .replace(/\\n/g, '\n')
+      .replace(/\\t/g, '\t')
+      .replace(/\\"/g, '"')
+      .replace(/\\\\/g, '\\')
+      .trim();
+  }
+  return null;
+}
+
 async function run(c, redoMsg = null, regenGroundMode = null, env = null) {
   const fetchFn = env?.fetch || window.fetch.bind(window);
   const saveChatFn = env?.save || (ch => save(ch, env?.storageOpts || null));
@@ -4533,8 +4575,10 @@ async function run(c, redoMsg = null, regenGroundMode = null, env = null) {
     let prepassDone = false;
     let fallbackDirectTools = false;
     let sentDirectTools = false;
+    let malformedRetryMode = null; // null | 'direct_code_exec' | 'no_tools_markdown'
+    let lastMalformedReason = '';
 
-    for (let attempt = 0; attempt < 2; attempt++) {
+    for (let attempt = 0; attempt < 3; attempt++) {
       reply.reqId = null;
       reply.text = ''; reply.thought = ''; reply.sandbox = []; reply.parts = [];
       reply.usage = null; reply.grounding = []; reply.queries = []; reply.error = ''; reply.warning = '';
@@ -4542,11 +4586,16 @@ async function run(c, redoMsg = null, regenGroundMode = null, env = null) {
       if (attempt === 0) reply.groundingWarning = '';
       streamMdCache.delete(replyIdx);
 
-      const useExplicitNow = Boolean(preset.expSupported && ec.active && ec.name && ec.cachedMsgCount > 0 && ec.cachedMsgCount < priorMsgs.length);
+      const forceOmitTools = malformedRetryMode === 'no_tools_markdown';
+      const useExplicitNow = Boolean(
+        !forceOmitTools &&
+        preset.expSupported && ec.active && ec.name &&
+        ec.cachedMsgCount > 0 && ec.cachedMsgCount < priorMsgs.length
+      );
       activeExplicitAttempt = useExplicitNow;
 
-      // Run Prefix-Isolated Tail Grounding from Turn 1 (>= 1) so `body.tools` never pollutes or flips the main prefix
-      const useTailBypass = !useExplicitNow && activeS.prefixLockOn && (activeS.searchOn || activeS.codeExecOn) && priorMsgs.length >= 1;
+      // Keep Tail Grounding active for BOTH Search and Cloud Py so toggling either never mutates the cached prefix
+      const useTailBypass = !useExplicitNow && !forceOmitTools && activeS.prefixLockOn && (activeS.searchOn || activeS.codeExecOn) && priorMsgs.length >= 1;
       if (useTailBypass && !prepassDone) {
         prepassDone = true;
         reply.thought = forceFreshGrounding
@@ -4568,7 +4617,7 @@ async function run(c, redoMsg = null, regenGroundMode = null, env = null) {
             reply.groundingWarning = 'Tail-grounding pre-pass failed (' + (prepassRes.error || 'API error') + ') — skipped direct-tool injection to protect your ' + estPriorContextTok.toLocaleString() + '-token cached prefix.';
           }
         }
-      } else if (lastUserMsg?.tailGroundingMeta && !forceFreshGrounding) {
+      } else if (lastUserMsg?.tailGroundingMeta && (!forceFreshGrounding || prepassDone)) {
         const gm = lastUserMsg.tailGroundingMeta;
         if (Array.isArray(gm.queries) && gm.queries.length) reply.queries = [...gm.queries];
         if (Array.isArray(gm.grounding) && gm.grounding.length) reply.grounding = [...gm.grounding];
@@ -4583,7 +4632,7 @@ async function run(c, redoMsg = null, regenGroundMode = null, env = null) {
         sentDirectTools = false;
       } else {
         if (sysText) body.systemInstruction = { parts: [{ text: sysText }] };
-        if (!useTailBypass || fallbackDirectTools) {
+        if (!forceOmitTools && (!useTailBypass || fallbackDirectTools || malformedRetryMode === 'direct_code_exec')) {
           const tools = [];
           if (activeS.searchOn) tools.push({ googleSearch: {} });
           if (activeS.codeExecOn) tools.push({ codeExecution: {} });
@@ -4594,6 +4643,17 @@ async function run(c, redoMsg = null, regenGroundMode = null, env = null) {
         body.generationConfig = genCfg;
       }
 
+      if (malformedRetryMode === 'direct_code_exec') {
+        body.contents = appendRecoveryHintToContents(
+          body.contents,
+          '[System Recovery Note: Your previous attempt aborted with ' + lastMalformedReason + ' due to invalid tool-call syntax. When invoking codeExecution / python_interpreter, pass code strictly as a JSON-escaped double-quoted string (\\n, \\") and NEVER use Python triple quotes ("""). Otherwise, output the code directly in a Markdown fenced code block without calling a tool.]'
+        );
+      } else if (malformedRetryMode === 'no_tools_markdown') {
+        body.contents = appendRecoveryHintToContents(
+          body.contents,
+          '[System Recovery Note: Your previous attempt aborted with ' + lastMalformedReason + '. Tool and sandbox execution (including google:python_interpreter) are not bound on this main response pass. Do NOT emit any tool or function call; use any pre-pass grounding data already provided above and write all code directly inside standard Markdown fenced code blocks.]'
+        );
+      }
       const r = await fetchFn(GAPI + '/v1beta/models/' + encodeURIComponent(targetModelId) + ':streamGenerateContent?alt=sse', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'x-goog-api-key': activeS.key },
@@ -4714,6 +4774,59 @@ async function run(c, redoMsg = null, regenGroundMode = null, env = null) {
           }
           scheduleStreamPatch();
         }
+      }
+
+      const isMalformedTool = !reply.error && (
+        streamFinishReason === 'MALFORMED_FUNCTION_CALL' ||
+        streamFinishReason === 'UNEXPECTED_TOOL_CALL'
+      );
+      if (isMalformedTool) {
+        lastMalformedReason = streamFinishReason;
+        if (attempt < 2 && malformedRetryMode !== 'no_tools_markdown') {
+          if (reply.usage) {
+            const pTok = Number(reply.usage.p) || 0;
+            const histTok = Math.min(pTok, historyCarryTok);
+            appendLedgerRecord(c, {
+              kind: isRegen ? 'regenerate' : 'generate',
+              turnNum, versionNum, msgIdx: replyIdx,
+              promptText: '[' + streamFinishReason + ' — Auto-Retried] ' + promptSnippet,
+              attCount: promptAttCount,
+              historyTok: histTok,
+              newPromptDelta: Math.max(0, pTok - histTok),
+              usage: { ...reply.usage, failed: true, error: streamFinishReason }
+            });
+          }
+          // Only attach direct tools on retry if prefix cache is NOT yet active (< minTok) or Prefix Lock is off
+          const canAttachDirectWithoutCacheBreak = !activeS.prefixLockOn || estPriorContextTok < minTok;
+          malformedRetryMode = (
+            activeS.codeExecOn &&
+            canAttachDirectWithoutCacheBreak &&
+            !sentDirectTools &&
+            !useExplicitNow &&
+            malformedRetryMode === null
+          ) ? 'direct_code_exec' : 'no_tools_markdown';
+
+          streamDispatched = false;
+          reply.groundingWarning = 'Auto-recovering from ' + streamFinishReason + ' (' +
+            (malformedRetryMode === 'direct_code_exec'
+              ? 'retrying with Cloud Python bound (below cache threshold)'
+              : 'retrying as direct Markdown to preserve cached prefix') + ')…';
+          reply.thought = reply.groundingWarning;
+          flushStreamPatch();
+          continue;
+        }
+
+        const salvagedCode = extractCodeFromMalformedCall(streamFinishMessage);
+        if (salvagedCode && !reply.text.trim()) {
+          reply.text = FENCE_STR + 'python\n' + salvagedCode + '\n' + FENCE_STR;
+          reply.warning = 'Recovered Python code from ' + streamFinishReason + ' because the model emitted invalid tool-call syntax.';
+          streamFinishReason = 'STOP';
+        }
+      }
+
+      if (!reply.error && malformedRetryMode && streamFinishReason === 'STOP') {
+        reply.groundingWarning = 'Recovered automatically from ' + lastMalformedReason +
+          (malformedRetryMode === 'no_tools_markdown' ? ' (prefix-safe Markdown retry).' : ' (completed on retry).');
       }
 
       if (!reply.error && streamFinishReason && streamFinishReason !== 'STOP') {
